@@ -36,4 +36,4 @@ def data_generator(group_num):
 
 if __name__ == '__main__':
     c,b,A= data_generator(17)
-    splx.simplex(c,A.T,b)
+    splx.simplex(c,A,b)

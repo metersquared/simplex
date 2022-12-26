@@ -29,5 +29,7 @@ def simplex(c,A,b):
 def phase1():
     return
 
+def transform_problem(A,b):
+
 def phase2():
     return
