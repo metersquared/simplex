@@ -28,9 +28,9 @@ class Problem:
 
     def __str__(self) -> str:
         if self.min:
-            return f"===LP Simplex Solver===\nObjective : Min {self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n============"
+            return f"===LP Simplex Solver===\nObjective :\nMin {self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
         else:
-            return f"===LP Simplex Solver===\nObjective : Max {-self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n============"
+            return f"===LP Simplex Solver===\nObjective :\nMax {-self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
 
     def set_max(self):
         '''
@@ -47,7 +47,6 @@ class Problem:
         if not self.min:
             self.min=True
             self.c=-self.c
-
 
     def transform_problem(self):
         '''
@@ -69,15 +68,23 @@ class Problem:
                 A[i,:]=-A[i,:]
                 b[i]=-bi
     
+    def set_x(self,x):
+        assert(np.shape(self.x)==np.shape(x))
+        self.x = x
 
 
-    def auxillary_problem(self):
+def auxillary_problem(p:Problem):
         '''
         Generate auxillary problem
+
+        Parameter
+        ---------
+        p : Problem
+            Problem to which one wants to generate auxillary problem
         '''
-        A=self.A
-        b=self.b
-        c=self.c
+        p.transform_problem()
+        A=p.A
+        b=p.b
         m,n=np.shape(A)
 
         aux_prob = Problem(
@@ -85,34 +92,7 @@ class Problem:
             b,
             np.append(np.zeros(n),np.ones(m))
             )
+
+        aux_prob.set_x(np.append(np.zeros(n),b))
+
         return aux_prob
-
-def simplex_method(c,A,b):
-    '''
-    Run the simplex algorithm on a LP of the form 
-    min c'x
-    subject to Ax<=b
-
-    Parameter
-    ---------
-    c : ndarray(n,)
-        objective vector
-    A : ndarray(m,n)
-        constraint matrix
-    b : ndarray(m,)
-        constraint vector
-    '''
-    assert(np.shape(A)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
-
-    isFeasible=False
-
-    c,A,b=phase1(c,A,b)
-
-    if(isFeasible):
-        c,A,b=phase2(c,A,b)
-    
-    return
-
-
-def phase2():
-    return
