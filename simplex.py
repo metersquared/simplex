@@ -25,12 +25,14 @@ class Problem:
         self.min=True
         assert(np.shape(A)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
         self.x=np.zeros(np.shape(A)[1])
+        self.B_idx=np.zeros(np.shape(A)[1], dtype=bool)
+        self.itr_steps=0
 
     def __str__(self) -> str:
         if self.min:
-            return f"===LP Simplex Solver===\nObjective :\nMin {self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
+            return f"===LP Simplex Solver===\nObjective :\nMin {self.c}\nConstraints :\n--A--\n{self.A}\n--AB--\n{self.A[:,self.B_idx]}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
         else:
-            return f"===LP Simplex Solver===\nObjective :\nMax {-self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
+            return f"===LP Simplex Solver===\nObjective :\nMax {-self.c}\nConstraints :\n--A--\n{self.A}\n--AB--\n{self.A[:,self.B_idx]}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
 
     def set_max(self):
         '''
@@ -55,9 +57,9 @@ class Problem:
         Parameter
         ---------
         A : ndarray(m,n)
-            constraint matrix
+            constraint matrix of dimension m,n
         b : ndarray(m,)
-            constraint vector
+            constraint vector of dimension m
         '''
         A=self.A
         b=self.b
@@ -68,9 +70,30 @@ class Problem:
                 A[i,:]=-A[i,:]
                 b[i]=-bi
     
-    def set_x(self,x):
+    def set_x(self, x):
+        '''
+        Set the current solution state of problem
+
+        Parameter
+        ---------
+        x : ndarray(n, )
+            solution vector of dimension n.
+        '''
         assert(np.shape(self.x)==np.shape(x))
         self.x = x
+
+    def set_basis(self, basis, val):
+        '''
+        Set the current basis solution of problem
+
+        Parameter
+        ---------
+        basis : array-like
+            list of indices to be changed
+        val : array-like
+            list of corresponding values
+        '''
+        self.B_idx[basis]=val
 
 
 def auxillary_problem(p:Problem):
@@ -93,6 +116,7 @@ def auxillary_problem(p:Problem):
             np.append(np.zeros(n),np.ones(m))
             )
 
-        aux_prob.set_x(np.append(np.zeros(n),b))
+        aux_prob.set_x(np.append(np.zeros(n),b)) #Set solution initially to the following
+        aux_prob.set_basis(np.arange(n,n+m),True)     
 
         return aux_prob
