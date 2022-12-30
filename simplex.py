@@ -115,10 +115,18 @@ class Problem:
         self.objective_value_init()
         self.reduced_cost_init()
 
-    def iterate_simplex(self):
+    def iterate_simplex(self, rule):
         '''
         Perform a single simplex iteration.
         '''
+
+        enter_idx, leaving_idx = rule(self)
+
+        self.r_cost = self.r_cost-(self.r_cost[enter_idx]/self.A[lea])
+
+
+
+
 
         
 
@@ -152,7 +160,8 @@ def auxillary_problem(p:Problem):
 def blands_rule(p:Problem):
     '''
     Gives the entering and leaving basis with Bland's rule.
-    i.e. minimal index of non-basis that has negative reduced cost.
+    i.e. minimal index of non-basis that has negative reduced cost enters.
+    Minimal index of basis that are candidates to exit.
 
     Parameter
     ---------
@@ -167,6 +176,9 @@ def blands_rule(p:Problem):
 
     x_idx=np.arange(np.size(p.x))
     enter_idx=np.min(x_idx[~p.B_idx & (p.r_cost<0)])
-    leaving_idx=np.min(x_idx[p.B_idx])
+    basis_idx=x_idx[p.B_idx]
+    leaving_idx=np.argmin(p.x[p.B_idx]/(p.A[:,enter_idx]).flatten())
+
+    leaving_idx=basis_idx[leaving_idx]
 
     return (enter_idx, leaving_idx)
