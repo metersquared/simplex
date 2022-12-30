@@ -94,29 +94,79 @@ class Problem:
             list of corresponding values
         '''
         self.B_idx[basis]=val
+    
+    def reduced_cost_init(self):
+        '''
+        Initialize the reduced cost (r_cost) of the current state of the problem.
+        '''
+
+        self.r_cost=self.c-self.c[self.B_idx]@(np.linalg.inv(self.A[:,self.B_idx])@self.A)
+
+    def objective_value_init(self):
+        '''
+        Initialize the objective value (obj_val) of the current state of the problem
+        '''
+        self.obj_val=self.c[self.B_idx]@self.x[self.B_idx]
+
+    def sync(self):
+        '''
+        Sync the objectives of the current state.
+        '''
+        self.objective_value_init()
+        self.reduced_cost_init()
+
+    def iterate_simplex(self):
+        '''
+        Perform a single simplex iteration.
+        '''
+
+        
+
 
 
 def auxillary_problem(p:Problem):
-        '''
-        Generate auxillary problem
+    '''
+    Generate auxillary problem
 
-        Parameter
-        ---------
-        p : Problem
-            Problem to which one wants to generate auxillary problem
-        '''
-        p.transform_problem()
-        A=p.A
-        b=p.b
-        m,n=np.shape(A)
+    Parameter
+    ---------
+    p : Problem
+        Problem to which one wants to generate auxillary problem
+    '''
+    p.transform_problem()
+    A=p.A
+    b=p.b
+    m,n=np.shape(A)
 
-        aux_prob = Problem(
-            np.append(A,np.diag(np.ones(m)),axis=1),
-            b,
-            np.append(np.zeros(n),np.ones(m))
-            )
+    aux_prob = Problem(
+        np.append(A,np.diag(np.ones(m)),axis=1),
+        b,
+        np.append(np.zeros(n),np.ones(m))
+        )
 
-        aux_prob.set_x(np.append(np.zeros(n),b)) #Set solution initially to the following
-        aux_prob.set_basis(np.arange(n,n+m),True)     
+    aux_prob.set_x(np.append(np.zeros(n),b)) #Set solution initially to the following
+    aux_prob.set_basis(np.arange(n,n+m),True)     
 
-        return aux_prob
+    return aux_prob
+
+def blands_rule(p:Problem):
+    '''
+    Gives the entering and leaving basis with Bland's rule.
+    i.e. minimal index of non-basis that has negative reduced cost.
+
+    Parameter
+    ---------
+    p : Problem
+        LP problem
+
+    Returns
+    -------
+    (int,int)
+        Entering and leaving basis.
+    '''
+
+    x_idx=np.arange(np.size(p.x))
+    enter_idx=np.min(x_idx[~p.B_idx & (p.r_cost<0)])
+    leaving_idx=np.min(x_idx[p.B_idx])
+
+    return (enter_idx, leaving_idx)
