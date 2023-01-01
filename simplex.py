@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import linalg as la
 
 class Problem:
     '''
@@ -20,12 +21,13 @@ class Problem:
     '''
     def __init__(self, A, b, c):
         self.A=A
+        self.m,self.n= np.shape(A)
         self.b=b
         self.c=c
         self.min=True
-        assert(np.shape(A)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
-        self.x=np.zeros(np.shape(A)[1])
-        self.B_idx=np.zeros(np.shape(A)[1], dtype=bool)
+        assert((self.m,self.n)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
+        self.x=np.zeros(self.n)
+        self.B_idx=np.arange(la.matrix_rank(A))
         self.itr_steps=0
 
     def __str__(self) -> str:
@@ -82,18 +84,20 @@ class Problem:
         assert(np.shape(self.x)==np.shape(x))
         self.x = x
 
-    def set_basis(self, basis, val):
+    def set_basis(self, basis_idx, var_idx):
         '''
         Set the current basis solution of problem
 
         Parameter
         ---------
-        basis : array-like
-            list of indices to be changed
+        basis_idx : array-like
+            list of indices of the basis to be changed. (1 to m=rank(A))
         val : array-like
-            list of corresponding values
+            list of indices of the variable to enter basis. (1 to n)
         '''
-        self.B_idx[basis]=val
+        assert(len(basis_idx)==len(var_idx))
+        for i in basis_idx:
+            self.B_idx[i]=var_idx[i]
     
     def reduced_cost_init(self):
         '''
@@ -166,7 +170,7 @@ def auxillary_problem(p:Problem):
         )
 
     aux_prob.set_x(np.append(np.zeros(n),b)) #Set solution initially to the following
-    aux_prob.set_basis(np.arange(n,n+m),True)     
+    aux_prob.set_basis(np.arange(m),np.arange(n,n+m))     
 
     return aux_prob
 
