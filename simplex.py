@@ -120,11 +120,24 @@ class Problem:
         Perform a single simplex iteration.
         '''
 
-        enter_idx, leaving_idx = rule(self)
+        enter_idx, leaving_idx, leaving_basis_idx = rule(self)
 
-        self.r_cost = self.r_cost-(self.r_cost[enter_idx]/self.A[lea])
+        print(self.r_cost)
+        self.r_cost = self.r_cost-(self.r_cost[enter_idx]/self.A[leaving_basis_idx, enter_idx])*self.A[leaving_basis_idx,:]
+        print(self.r_cost)
+        
+        for row in np.arange(np.shape(self.A)[0]):
+            if row!= leaving_basis_idx:
+                self.A[row,:]=self.A[row,:]-(self.A[row,enter_idx]/self.A[leaving_basis_idx,enter_idx])*self.A[leaving_basis_idx,:]
+            else:
+                self.A[row,:]=self.A[row,:]/self.A[row,enter_idx]
+        
+        print(self.A)
 
+        self.B_idx[enter_idx]=True
+        self.B_idx[leaving_idx]=False
 
+        print(self.B_idx)
 
 
 
@@ -177,8 +190,12 @@ def blands_rule(p:Problem):
     x_idx=np.arange(np.size(p.x))
     enter_idx=np.min(x_idx[~p.B_idx & (p.r_cost<0)])
     basis_idx=x_idx[p.B_idx]
-    leaving_idx=np.argmin(p.x[p.B_idx]/(p.A[:,enter_idx]).flatten())
+    leaving_basis_idx=np.argmin(p.x[p.B_idx]/(p.A[:,enter_idx]).flatten())
 
-    leaving_idx=basis_idx[leaving_idx]
+    leaving_idx=basis_idx[leaving_basis_idx]
 
-    return (enter_idx, leaving_idx)
+    print(enter_idx)
+    print(leaving_idx)
+    print(leaving_basis_idx)
+
+    return (enter_idx, leaving_idx, leaving_basis_idx)
