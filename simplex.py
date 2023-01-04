@@ -122,32 +122,40 @@ class Problem:
     def iterate_simplex(self, rule):
         '''
         Perform a single simplex iteration.
+
+        Parameter
+        ---------
+        rule : function
+            Function that defines the pivoting rule, must return the index leaving and 
+            entering the basis, i.e. (enter_idx, leaving_idx) 
         '''
 
-        enter_idx, leaving_idx, leaving_basis_idx = rule(self)
+        enter_idx, leaving_idx= rule(self)
 
-        print(self.r_cost)
-        self.r_cost = self.r_cost-(self.r_cost[enter_idx]/self.A[leaving_basis_idx, enter_idx])*self.A[leaving_basis_idx,:]
-        print(self.r_cost)
-        
+        # Gives the pivoting row
+        leaving_row=np.where(self.B_idx==leaving_idx)[0][0]
+
+        # Updates the reduced cost and objective value
+        cost_factor=(self.r_cost[enter_idx]/self.A[leaving_row, enter_idx])
+        self.r_cost = self.r_cost-cost_factor*self.A[leaving_row,:]
+        self.obj_val = self.obj_val+cost_factor*self.x[leaving_idx]
+
+        # Updates the constraint matrix and solution with row operations
         for row in np.arange(np.shape(self.A)[0]):
-            if row!= leaving_basis_idx:
-                self.A[row,:]=self.A[row,:]-(self.A[row,enter_idx]/self.A[leaving_basis_idx,enter_idx])*self.A[leaving_basis_idx,:]
-            else:
-                self.A[row,:]=self.A[row,:]/self.A[row,enter_idx]
+            factor=(self.A[row,enter_idx]/self.A[leaving_row,enter_idx])
+            if row!= leaving_row:
+                self.A[row,:]=self.A[row,:]-factor*self.A[leaving_row,:]
+                self.x[self.B_idx[row]]=self.x[self.B_idx[row]]-factor*self.x[leaving_idx]
         
-        print(self.A)
+        # Normalize entering basis and eliminate leaving basis. 
+        self.x[enter_idx]=self.x[leaving_idx]/self.A[leaving_row,enter_idx]
+        self.A[leaving_row,:]=self.A[leaving_row,:]/self.A[leaving_row,enter_idx]
+        self.x[leaving_idx]=0
+        self.B_idx[leaving_row]=enter_idx
 
-        self.B_idx[enter_idx]=True
-        self.B_idx[leaving_idx]=False
-
-        print(self.B_idx)
-
-
-
-        
-
-
+###########
+# Phase 1 #
+###########
 
 def auxillary_problem(p:Problem):
     '''
@@ -174,6 +182,14 @@ def auxillary_problem(p:Problem):
 
     return aux_prob
 
+
+
+
+##################
+# Pivoting rules #
+##################
+
+
 def blands_rule(p:Problem):
     '''
     Gives the entering and leaving basis with Bland's rule.
@@ -191,15 +207,16 @@ def blands_rule(p:Problem):
         Entering and leaving basis.
     '''
 
-    x_idx=np.arange(np.size(p.x))
-    enter_idx=np.min(x_idx[~p.B_idx & (p.r_cost<0)])
-    basis_idx=x_idx[p.B_idx]
-    leaving_basis_idx=np.argmin(p.x[p.B_idx]/(p.A[:,enter_idx]).flatten())
-
-    leaving_idx=basis_idx[leaving_basis_idx]
+    x_idx=np.arange(p.n)
+    print(x_idx[(p.r_cost<0)])
+    enter_idx=np.min([i for i in x_idx[(p.r_cost<0)] if i not in p.B_idx])
+    theta = p.x[p.B_idx]/(p.A[:,enter_idx]).flatten()
+    print((p.A[:,enter_idx]).flatten()>0)
+    print(p.B_idx[theta==np.min(theta,initial=np.inf,where=(p.A[:,enter_idx]).flatten()>0)])
+    leaving_idx=np.min(p.B_idx[theta==np.min(theta,initial=np.inf,where=(p.A[:,enter_idx]).flatten()>0)])
+    
 
     print(enter_idx)
     print(leaving_idx)
-    print(leaving_basis_idx)
 
-    return (enter_idx, leaving_idx, leaving_basis_idx)
+    return (enter_idx, leaving_idx)
