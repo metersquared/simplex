@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import linalg as la
 
 class Problem:
     '''
@@ -20,17 +21,20 @@ class Problem:
     '''
     def __init__(self, A, b, c):
         self.A=A
+        self.m,self.n= np.shape(A)
         self.b=b
         self.c=c
         self.min=True
-        assert(np.shape(A)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
-        self.x=np.zeros(np.shape(A)[1])
+        assert((self.m,self.n)==(np.shape(b)[0],np.shape(c)[0])), "Matrix size did not coincide objective and constraint vector."
+        self.x=np.zeros(self.n)
+        self.B_idx=np.arange(la.matrix_rank(A))
+        self.itr_steps=0
 
     def __str__(self) -> str:
         if self.min:
-            return f"===LP Simplex Solver===\nObjective :\nMin {self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
+            return f"===LP Simplex Solver===\nObjective :\nMin {self.c}\nConstraints :\n--A--\n{self.A}\n--AB--\n{self.A[:,self.B_idx]}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
         else:
-            return f"===LP Simplex Solver===\nObjective :\nMax {-self.c}\nConstraints :\n--A--\n{self.A}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
+            return f"===LP Simplex Solver===\nObjective :\nMax {-self.c}\nConstraints :\n--A--\n{self.A}\n--AB--\n{self.A[:,self.B_idx]}\n--b--\n{self.b}\n--x--\n{self.x}\n=======================\n"
 
     def set_max(self):
         '''
@@ -55,9 +59,9 @@ class Problem:
         Parameter
         ---------
         A : ndarray(m,n)
-            constraint matrix
+            constraint matrix of dimension m,n
         b : ndarray(m,)
-            constraint vector
+            constraint vector of dimension m
         '''
         A=self.A
         b=self.b
@@ -68,31 +72,351 @@ class Problem:
                 A[i,:]=-A[i,:]
                 b[i]=-bi
     
-    def set_x(self,x):
-        assert(np.shape(self.x)==np.shape(x))
-        self.x = x
-
-
-def auxillary_problem(p:Problem):
+    def set_x(self, x):
         '''
-        Generate auxillary problem
+        Set the current solution state of problem
 
         Parameter
         ---------
-        p : Problem
-            Problem to which one wants to generate auxillary problem
+        x : ndarray(n, )
+            solution vector of dimension n.
         '''
-        p.transform_problem()
-        A=p.A
-        b=p.b
-        m,n=np.shape(A)
+        assert(np.shape(self.x)==np.shape(x))
+        self.x = x
 
-        aux_prob = Problem(
-            np.append(A,np.diag(np.ones(m)),axis=1),
-            b,
-            np.append(np.zeros(n),np.ones(m))
-            )
+    def set_basis(self, basis_idx, var_idx):
+        '''
+        Set the current basis solution of problem
 
-        aux_prob.set_x(np.append(np.zeros(n),b))
+        Parameter
+        ---------
+        basis_idx : array-like
+            list of indices of the basis to be changed. (1 to m=rank(A))
+        val : array-like
+            list of indices of the variable to enter basis. (1 to n)
+        '''
+        assert(len(basis_idx)==len(var_idx))
+        for i in basis_idx:
+            self.B_idx[i]=var_idx[i]
+    
+    def reduced_cost_init(self):
+        '''
+        Initialize the reduced cost (r_cost) of the current state of the problem.
+        '''
 
-        return aux_prob
+        self.r_cost=self.c-self.c[self.B_idx]@(np.linalg.inv(self.A[:,self.B_idx])@self.A)
+
+    def objective_value_init(self):
+        '''
+        Initialize the objective value (obj_val) of the current state of the problem
+        '''
+        self.obj_val=self.c[self.B_idx]@self.x[self.B_idx]
+
+    def sync(self):
+        '''
+        Sync the objectives of the current state.
+        '''
+        self.objective_value_init()
+        self.reduced_cost_init()
+
+    def iterate_simplex(self, pivot_rule):
+        '''
+        Perform a single simplex iteration.
+
+        Parameter
+        ---------
+        pivot_rule : function
+            Function that defines the pivoting rule, must return the index leaving and 
+            entering the basis, i.e. (enter_idx, leaving_idx) 
+
+        Returns
+        -------
+        boolean
+            True if iteration passes the boundedness test, otherwise False. Use this as
+            a iteration condition.
+        '''
+
+        enter_idx, leaving_idx= pivot_rule(self)
+
+        # Gives the pivoting row
+        leaving_row=np.where(self.B_idx==leaving_idx)[0][0]
+        
+        if np.all((self.A[:,enter_idx]).flatten()<=0):
+        
+            return False
+        
+        else:
+            # Updates the reduced cost and objective value
+            cost_factor=(self.r_cost[enter_idx]/self.A[leaving_row, enter_idx])
+            self.r_cost = self.r_cost-cost_factor*self.A[leaving_row,:]
+            self.obj_val = self.obj_val+cost_factor*self.x[leaving_idx]
+
+            # Updates the constraint matrix and solution with row operations
+            for row in np.arange(np.shape(self.A)[0]):
+                factor=(self.A[row,enter_idx]/self.A[leaving_row,enter_idx])
+                if row!= leaving_row:
+                    self.A[row,:]=self.A[row,:]-factor*self.A[leaving_row,:]
+                    self.x[self.B_idx[row]]=self.x[self.B_idx[row]]-factor*self.x[leaving_idx]
+            
+            # Normalize entering basis and eliminate leaving basis. 
+            self.x[enter_idx]=self.x[leaving_idx]/self.A[leaving_row,enter_idx]
+            self.A[leaving_row,:]=self.A[leaving_row,:]/self.A[leaving_row,enter_idx]
+            self.x[leaving_idx]=0
+            self.B_idx[leaving_row]=enter_idx
+            
+            return True
+
+#############
+# Optimizer #
+#############
+
+def multiphase_simplex(p:Problem, pivot_rule):
+    '''
+    Perform a 2-phase Simplex optimization. Phase 1 seeks a feasible basic solution. Phase 2 uses th feasible basic solutionto search optimal solution.
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to be optimized
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    print(p)
+    
+    phase_1(p,pivot_rule)
+    if p.infeasible:
+        return
+    phase_2(p,pivot_rule)
+
+def optimize(p:Problem, pivot_rule):
+    '''
+    Perform a general Simplex optimization. Stops when reduced cost is non-negative (optimal) or pivot column is non-positive (unbounded).
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to be optimized
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    p.sync()
+
+    while np.any(p.r_cost<0):
+        if not p.iterate_simplex(pivot_rule):
+            # Checks if iteration is unbounded
+            print("--UNBOUNDED--\n")
+            return False
+
+    print("--Optimal value--")
+    print(p.obj_val)
+    print("--Solution--")
+    print(p.x)
+    return True
+
+###########
+# Phase 1 #
+###########
+
+def auxillary_problem(p:Problem):
+    '''
+    Generate auxillary problem
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to which one wants to generate auxillary problem
+    '''
+    p.transform_problem()
+    A=p.A
+    b=p.b
+    m,n=np.shape(A)
+
+    aux_prob = Problem(
+        np.append(A,np.diag(np.ones(m)),axis=1),
+        b,
+        np.append(np.zeros(n),np.ones(m))
+        )
+
+    aux_prob.set_x(np.append(np.zeros(n),b)) #Set solution initially to the following
+    aux_prob.artificial_var=np.arange(n,n+m)
+    aux_prob.set_basis(np.arange(m),aux_prob.artificial_var) 
+
+    return aux_prob
+
+def phase_1(p:Problem, pivot_rule):
+    '''
+    Perform a Phase 1 Simplex optimization
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to which one wants to generate auxillary problem
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    print("--Phase 1--\n")
+    pa = auxillary_problem(p)
+    pa.sync()
+    print("Auxillary Problem Optimization :")
+    while optimize(pa,pivot_rule):
+        while has_artificial_basis(pa):
+            if has_nonzero_row(pa):
+                pa.iterate_simplex(artificial_elimination)
+        if not has_artificial_basis(pa):
+            break
+
+    if not np.isclose(pa.obj_val,0):
+        print("--INFEASIBLE--")
+        p.infeasible=True
+    else:
+        print("--FEASIBLE SOLUTION FOUND--")
+        pa.A=np.delete(pa.A,np.arange(p.n,pa.n),axis=1)
+        p.A=pa.A
+        p.b=pa.b
+        p.x[pa.B_idx]=pa.x[pa.B_idx]
+        p.B_idx=pa.B_idx
+    print("=======================\n")
+    
+def has_artificial_basis(pa:Problem):
+    '''
+    Check if basis is artificial (Basis contains artificial variable).
+
+    Parameter
+    ---------
+    p,pa : Problem
+        Problem to which one wants to generate auxillary problem
+
+    Returns
+    -------
+    boolean
+        True if it has artificial basis, otherwise False.
+    '''
+    return len(pa.B_idx[pa.B_idx==pa.artificial_var])>0
+
+def has_nonzero_row(pa:Problem):
+    '''
+    Check if artificial basis contains nonzero pivot element.
+
+    Parameter
+    ---------
+    p,pa : Problem
+        Problem to which one wants to generate auxillary problem
+
+    Returns
+    -------
+    boolean
+        True if it has artificial basis, otherwise False.
+    '''
+
+    # Find the artificial basis to choose as leaving index
+    leaving_idx=np.min(pa.B_idx[pa.B_idx==pa.artificial_var])
+    leaving_row=np.where(pa.B_idx==leaving_idx)[0][0]
+
+    # List all possible non-artifical variables
+    x_idx=np.arange(np.min(pa.artificial_var))
+
+    # Calculate the entering basis by finding the smallest index where pivot element is non-zero.
+    enter_idxs=[i for i in x_idx[pa.A[leaving_row,x_idx]!=0] if i not in pa.B_idx]
+
+    if len(enter_idxs)==0:
+        pa.A=np.delete(pa.A,leaving_row,0)
+        pa.b=np.delete(pa.b,leaving_row)
+        pa.B_idx=np.delete(pa.B_idx,leaving_row)
+        pa.x[leaving_idx]=0
+        return False
+    else:
+        return True
+
+###########
+# Phase 2 #
+###########
+
+def phase_2(p:Problem,pivot_rule):
+    '''
+    Perform a Phase 2 Simplex optimization
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to which one wants to generate auxillary problem
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    print("--Phase 2--\n")
+    print("Constraints :")
+    print("--A--")
+    print(p.A)
+    print("--b--")
+    print(p.b)
+    p.sync()
+    optimize(p, pivot_rule)
+    print("=======================")
+
+##################
+# Pivoting rules #
+##################
+
+
+def blands_rule(p:Problem):
+    '''
+    Gives the entering and leaving basis with Bland's rule.
+    
+    i.e. Minimal index of non-basis that has negative reduced cost enters.
+    Minimal index of basis that are candidates exit.
+
+    Parameter
+    ---------
+    p : Problem
+        LP problem
+
+    Returns
+    -------
+    (int,int)
+        Entering and leaving basis.
+    '''
+
+    # List all possible index of variables
+    x_idx=np.arange(p.n)
+
+    # Calculate the entering basis by finding the smallest index where the reduced cost is negative.
+    enter_idx=np.min([i for i in x_idx[(p.r_cost<0)] if i not in p.B_idx])
+
+    # Calculate the leaving basis by finding minimum x/u where u>0
+    with np.errstate(divide='ignore', invalid='ignore'):
+        theta = p.x[p.B_idx]/(p.A[:,enter_idx]).flatten()
+    leaving_idx=np.min(p.B_idx[theta==np.min(theta,initial=np.inf,where=(p.A[:,enter_idx]).flatten()>0)])
+
+    return (enter_idx, leaving_idx)
+
+def artificial_elimination(p:Problem):
+    '''
+    Gives the entering and leaving basis for eliminating artifcial variable in Phase 1.
+
+    i.e. Index where pivot element is non-zero enters. Artificial variable exits.
+
+    Parameter
+    ---------
+    p : Problem
+        LP auxillary problem
+
+    Returns
+    -------
+    (int,int)
+        Entering and leaving basis.
+    '''
+
+    # Find the artificial basis to choose as leaving index
+    leaving_idx=np.min(p.B_idx[p.B_idx==p.artificial_var])
+    leaving_row=np.where(p.B_idx==leaving_idx)[0][0]
+
+    # List all possible non-artifical variables
+    x_idx=np.arange(np.min(p.artificial_var))
+
+    # Calculate the entering basis by finding the smallest index where pivot element is non-zero.
+    enter_idxs=[i for i in x_idx[p.A[leaving_row,x_idx]!=0] if i not in p.B_idx]
+    enter_idx=np.min(enter_idxs)
+    return (enter_idx, leaving_idx)

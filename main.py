@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import linalg as la
 import simplex as splx
 
 def data_generator(group_num):
@@ -36,7 +37,34 @@ def data_generator(group_num):
 
 if __name__ == '__main__':
     c,b,A= data_generator(17)
+
+    """ A=np.array([[1, 2, 3, 0],
+                [-1, 2, 6, 0],
+                [0, 4, 9, 0],
+                [0, 0, 3, 1]])
+    b=np.array([3,2,5,1])
+    c=np.array([1,1,1,0]) """
     p1=splx.Problem(A,b,c)
-    print(p1)
-    p1.transform_problem()
-    print(p1)
+    p1.set_max()
+    splx.multiphase_simplex(p1,splx.blands_rule)
+    """
+    pa=splx.auxillary_problem(p1)
+    print(pa)
+    pa.sync()
+    print(pa.r_cost)
+    
+    splx.optimize(pa,splx.blands_rule)
+
+    A=np.array([[1, 0, 1, 0],
+                [1, -1, 0, 1]])
+    b=np.array([7,8])
+    c=np.array([-5,-4,0,0])
+    
+    p2=splx.Problem(A,b,c)
+    p2.set_x(np.array([0,0,7,8]))
+    p2.set_basis(np.array([0,1]),np.array([2,3]))
+    
+    print(p2)
+    splx.optimize(p2,splx.blands_rule)
+    """
+    """print(pa) """
