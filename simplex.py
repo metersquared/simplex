@@ -170,6 +170,25 @@ class Problem:
 # Optimizer #
 #############
 
+def multiphase_simplex(p:Problem, pivot_rule):
+    '''
+    Perform a 2-phase Simplex optimization. Phase 1 seeks a feasible basic solution. Phase 2 uses th feasible basic solutionto search optimal solution.
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to be optimized
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    print(p)
+    
+    phase_1(p,pivot_rule)
+    if p.infeasible:
+        return
+    phase_2(p,pivot_rule)
+
 def optimize(p:Problem, pivot_rule):
     '''
     Perform a general Simplex optimization. Stops when reduced cost is non-negative (optimal) or pivot column is non-positive (unbounded).
@@ -194,7 +213,6 @@ def optimize(p:Problem, pivot_rule):
     print(p.obj_val)
     print("--Solution--")
     print(p.x)
-    print("\n")
     return True
 
 ###########
@@ -227,7 +245,7 @@ def auxillary_problem(p:Problem):
 
     return aux_prob
 
-def phase_1(p:Problem):
+def phase_1(p:Problem, pivot_rule):
     '''
     Perform a Phase 1 Simplex optimization
 
@@ -235,24 +253,32 @@ def phase_1(p:Problem):
     ---------
     p : Problem
         Problem to which one wants to generate auxillary problem
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
     '''
     print("--Phase 1--\n")
     pa = auxillary_problem(p)
     pa.sync()
-   
-    while optimize(pa,blands_rule):
+    print("Auxillary Problem Optimization :")
+    while optimize(pa,pivot_rule):
         while has_artificial_basis(pa):
             if has_nonzero_row(pa):
                 pa.iterate_simplex(artificial_elimination)
         if not has_artificial_basis(pa):
             break
 
-    print(pa.B_idx)
-    print(pa.x[pa.B_idx])        
-
     if not np.isclose(pa.obj_val,0):
-        print("INFEASIBLE")
-
+        print("--INFEASIBLE--")
+        p.infeasible=True
+    else:
+        print("--FEASIBLE SOLUTION FOUND--")
+        pa.A=np.delete(pa.A,np.arange(p.n,pa.n),axis=1)
+        p.A=pa.A
+        p.b=pa.b
+        p.x[pa.B_idx]=pa.x[pa.B_idx]
+        p.B_idx=pa.B_idx
+    print("=======================\n")
     
 def has_artificial_basis(pa:Problem):
     '''
@@ -297,11 +323,38 @@ def has_nonzero_row(pa:Problem):
 
     if len(enter_idxs)==0:
         pa.A=np.delete(pa.A,leaving_row,0)
+        pa.b=np.delete(pa.b,leaving_row)
         pa.B_idx=np.delete(pa.B_idx,leaving_row)
         pa.x[leaving_idx]=0
         return False
     else:
         return True
+
+###########
+# Phase 2 #
+###########
+
+def phase_2(p:Problem,pivot_rule):
+    '''
+    Perform a Phase 2 Simplex optimization
+
+    Parameter
+    ---------
+    p : Problem
+        Problem to which one wants to generate auxillary problem
+    pivot_rule : function
+        Function that defines the pivoting rule, must return the index leaving and 
+        entering the basis, i.e. (enter_idx, leaving_idx) 
+    '''
+    print("--Phase 2--\n")
+    print("Constraints :")
+    print("--A--")
+    print(p.A)
+    print("--b--")
+    print(p.b)
+    p.sync()
+    optimize(p, pivot_rule)
+    print("=======================")
 
 ##################
 # Pivoting rules #
@@ -365,10 +418,5 @@ def artificial_elimination(p:Problem):
 
     # Calculate the entering basis by finding the smallest index where pivot element is non-zero.
     enter_idxs=[i for i in x_idx[p.A[leaving_row,x_idx]!=0] if i not in p.B_idx]
-    if len(enter_idxs)>0:
-        enter_idx=np.min(enter_idxs)
-        return (enter_idx, leaving_idx)
-    else:
-        p.A=np.delete(p.A,leaving_row,0)
-        p.B_idx=np.delete(p.B_idx,leaving_row)
-        p.x[leaving_idx]=0
+    enter_idx=np.min(enter_idxs)
+    return (enter_idx, leaving_idx)
